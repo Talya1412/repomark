@@ -1,11 +1,17 @@
 {
   "name": "repomark",
   "version": "0.1.0",
-  "description": "Deterministic local repository health reports.",
+  "description": "Offline, evidence-first repository readiness reports and regression checks.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/Talya1412/repomark.git" },
+  "homepage": "https://github.com/Talya1412/repomark",
+  "bugs": { "url": "https://github.com/Talya1412/repomark/issues" },
+  "keywords": ["repository", "readiness", "regression", "diagnostics", "cli", "offline"],
+  "author": "Repomark contributors",
   "type": "module",
   "bin": { "repomark": "dist/src/cli.js" },
-  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md"],
+  "files": ["dist/src/**/*.js", "dist/src/**/*.d.ts", "README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md"],
   "engines": { "node": ">=20" },
-  "scripts": { "build": "tsc", "test": "npm run build && node --test dist/test/core.test.js", "check": "tsc --noEmit", "smoke": "npm run build && node dist/src/cli.js --help && node dist/src/cli.js --format terminal --no-color ." },
+  "scripts": { "build": "tsc", "test": "npm run build && node --test dist/test/core.test.js", "check": "tsc --noEmit", "smoke": "npm run build && node dist/src/cli.js --help && node dist/src/cli.js --format terminal --no-color .", "pack:check": "npm pack --dry-run" },
   "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.7.0" }
 }

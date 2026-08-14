@@ -1,4 +1,7 @@
 src/
 test/
 tsconfig.json
-*.map
+dist/**/*.map
+dist/test/
+docs/
+scripts/
