@@ -9,5 +9,7 @@ export function renderMarkdown(report: ScoreReport): string {
   const findings = report.findings.length > 0
     ? report.findings.map((finding) => `- **${escapeMarkdown(finding.severity.toUpperCase())}:** ${escapeMarkdown(finding.message)} **Action:** ${escapeMarkdown(finding.action)}`).join('\n')
     : '- None';
-  return `# repomark: ${escapeMarkdown(report.name)}\n\n**Score:** ${report.score}/100 (**${report.grade}**)  \n**Generated:** ${escapeMarkdown(report.generatedAt)}\n\n| Area | Points | Status |\n| --- | ---: | --- |\n${rows}\n\n## Evidence\n\n${evidence}\n\n## Findings\n\n${findings}\n`;
+  const comparison = report.comparison ? `\n## Comparison\n\n- Score delta: ${report.comparison.scoreDelta >= 0 ? '+' : ''}${report.comparison.scoreDelta}\n- Regressions: ${report.comparison.regressions.length}\n- Recoveries: ${report.comparison.recoveries.length}\n- Changed evidence: ${report.comparison.changedEvidence.length}\n` : '';
+  const diagnostics = report.facts.provenance ? `\n## Diagnostics\n\n- Files scanned: ${report.facts.provenance.diagnostics.filesScanned}\n- Limits: ${report.facts.provenance.diagnostics.maxFiles} files, depth ${report.facts.provenance.diagnostics.maxDepth}\n` : '';
+  return `# repomark: ${escapeMarkdown(report.name)}\n\n**Score:** ${report.score}/100 (**${report.grade}**)  \n**Generated:** ${escapeMarkdown(report.generatedAt)}\n\n| Area | Points | Status |\n| --- | ---: | --- |\n${rows}\n\n## Evidence\n\n${evidence}\n\n## Findings\n\n${findings}\n${diagnostics}${comparison}`;
 }
