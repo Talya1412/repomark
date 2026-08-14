@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reworked the public package, README, demo, and scheduled report workflow around offline, evidence-first repository readiness and regression checks.
+- Added complete npm metadata, package smoke validation, Markdown job summaries, and JSON/HTML workflow artifacts.
 - Tightened README, license, CI, test, source, docs, and package metadata detection to avoid false-positive scores.
 - Added common CI provider markers and test filename conventions with deterministic POSIX evidence paths.
 - Added evidence and actionable severity findings to terminal, Markdown, and HTML reports.
