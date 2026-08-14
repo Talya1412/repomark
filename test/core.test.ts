@@ -8,7 +8,7 @@ import { renderMarkdown } from '../src/renderers/markdown.js';
 import { renderTerminal } from '../src/renderers/terminal.js';
 import { gradeFor, scoreRepository } from '../src/scoring/score-repository.js';
 import { writeOutput } from '../src/output/write-output.js';
-import type { EvidenceMap, RepositoryFacts } from '../src/types.js';
+import type { Comparison, EvidenceMap, RepositoryFacts } from '../src/types.js';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -19,6 +19,8 @@ import { gitFacts } from '../src/repository/git.js';
 import { packageMetadata } from '../src/repository/package-metadata.js';
 import { scanRepository } from '../src/repository/scan-repository.js';
 import { renderJson } from '../src/renderers/json.js';
+import { renderBadge } from '../src/renderers/badge.js';
+import { compareReports } from '../src/comparison.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +34,7 @@ async function writeRepositoryFile(root: string, relative: string, content: stri
   await writeFile(file, content, 'utf8');
 }
 test('parses format and threshold', () => { const options = parseArgs(['demo', '--format', 'json', '--threshold', '75', '--no-color']); assert.equal(options.path, 'demo'); assert.equal(options.format, 'json'); assert.equal(options.threshold, 75); assert.equal(options.color, false); });
+test('parses optional baseline comparison path', () => { assert.equal(parseArgs(['--compare', 'baseline.json']).compare, 'baseline.json'); assert.throws(() => parseArgs(['--compare']), /requires a value/); });
 test('rejects invalid threshold', () => { assert.throws(() => parseArgs(['--threshold', '101']), /threshold/); });
 test('rejects invalid or missing format', () => { assert.throws(() => parseArgs(['--format', 'yaml']), /format/); assert.throws(() => parseArgs(['--format']), /requires a value/); assert.throws(() => parseArgs(['--format', '--output', 'report.txt']), /requires a value/); });
 test('rejects missing output values', () => { assert.throws(() => parseArgs(['--output']), /--output requires a value/); assert.throws(() => parseArgs(['--output', '--badge-output', 'badge.svg']), /--output requires a value/); assert.throws(() => parseArgs(['--badge-output']), /--badge-output requires a value/); });
@@ -47,10 +50,29 @@ test('classifies CLI usage errors separately from scan failures', async () => {
 test('creates parent directories for explicit output', async () => { const root = await mkdtemp(path.join(os.tmpdir(), 'repomark-')); const output = path.join(root, 'nested', 'report.txt'); try { await writeOutput(output, 'report'); assert.equal(await readFile(output, 'utf8'), 'report'); } finally { await rm(root, { recursive: true, force: true }); } });
 test('scores full repository deterministically', () => { const report = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z')); assert.equal(report.score, 100); assert.equal(report.grade, 'A'); assert.equal(report.generatedAt, '2026-01-01T00:00:00.000Z'); });
 test('grades boundaries', () => { assert.equal(gradeFor(90), 'A'); assert.equal(gradeFor(75), 'B'); assert.equal(gradeFor(60), 'C'); assert.equal(gradeFor(40), 'D'); assert.equal(gradeFor(39), 'F'); });
+test('compares score, evidence, findings, regressions, and recoveries deterministically', () => {
+  const baseline = scoreRepository({ ...facts, features: { ...facts.features, tests: false }, evidence: findingEvidence }, new Date('2026-01-01T00:00:00.000Z'));
+  const current = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z'));
+  const comparison = compareReports(current, baseline);
+  assert.equal(comparison.scoreDelta, 15);
+  assert.deepEqual(comparison.recoveries, ['Tests']);
+  assert.deepEqual(comparison.regressions, []);
+  assert.deepEqual(comparison.newFindings, []);
+  assert.deepEqual(comparison.resolvedFindings, ['tests']);
+  assert.deepEqual(compareReports(current, current), { baselineScore: 100, scoreDelta: 0, baselineGrade: 'A', regressions: [], recoveries: [], changedEvidence: [], newFindings: [], resolvedFindings: [] });
+});
+test('badge color follows grade and escapes label values', () => { assert.match(renderBadge({ ...reportWithFinding, name: '<demo>' }), /#4c9aff/); assert.match(renderBadge({ ...reportWithFinding, name: '<demo>' }), /aria-label="repomark: 85\/100 B"/); });
 test('escapes output control characters', () => { assert.equal(escapeHtml('<x> & "'), '&lt;x&gt; &amp; &quot;'); assert.equal(escapeMarkdown('a|[b]'), 'a\\|\\[b\\]'); });
 test('renders evidence and actionable findings in terminal without color', () => { const output = renderTerminal(reportWithFinding, false); assert.match(output, /Evidence: test\|bad\.md/); assert.match(output, /Findings/); assert.match(output, /Action:/); assert.doesNotMatch(output, /\u001b\[/); });
-test('renders escaped evidence and findings in Markdown and HTML', () => { const markdown = renderMarkdown(reportWithFinding); assert.match(markdown, /## Evidence/); assert.match(markdown, /test\\\|bad\.md/); assert.match(markdown, /## Findings/); const html = renderHtml(reportWithFinding); assert.match(html, /<h2>Evidence<\/h2>/); assert.match(html, /test\|bad\.md/); assert.match(html, /class="severity-high"/); assert.doesNotMatch(html, /<demo>/); });
-test('help documents usage, outputs, local-only note, and exit codes', () => { assert.match(HELP, /Examples:/); assert.match(HELP, /Outputs:/); assert.match(HELP, /Exit codes:/); assert.match(HELP, /no network/); });
+test('renders escaped evidence and findings in Markdown and HTML', () => { const markdown = renderMarkdown(reportWithFinding); assert.match(markdown, /## Evidence/); assert.match(markdown, /test\\\|bad\.md/); assert.match(markdown, /## Findings/); const html = renderHtml(reportWithFinding); assert.match(html, /<h2 id="evidence-title">Evidence<\/h2>/); assert.match(html, /test\|bad\.md/); assert.match(html, /class="finding severity-high"/); assert.doesNotMatch(html, /<demo>/); });
+test('renders complete HTML comparison, diagnostics, and escaped evidence paths', () => {
+  const comparison: Comparison = { baselineScore: 70, scoreDelta: 15, baselineGrade: 'C', regressions: ['CI < broken'], recoveries: ['Tests'], changedEvidence: ['docs/a & b.md'], newFindings: ['new <finding>'], resolvedFindings: ['old finding'] };
+  const report = scoreRepository({ ...facts, name: '<demo>', evidence: { ...findingEvidence, docs: ['long/<path>&.md'] }, provenance: { scanner: 'local-filesystem', diagnostics: { filesScanned: 12, maxFiles: 10, maxDepth: 4, truncated: true, unreadableDirectories: 2 } } }, new Date('2026-01-01T00:00:00.000Z'));
+  const html = renderHtml({ ...report, comparison });
+  assert.match(html, /Regressions/); assert.match(html, /Recoveries/); assert.match(html, /Changed evidence/); assert.match(html, /New findings/); assert.match(html, /Resolved findings/);
+  assert.match(html, /Files scanned/); assert.match(html, /Unreadable directories/); assert.match(html, /Partial scan/); assert.match(html, /long\/&lt;path&gt;&amp;\.md/); assert.match(html, /<time datetime="2026-01-01T00:00:00\.000Z">/);
+});
+test('help documents usage, compare, outputs, local-only note, and exit codes', () => { assert.match(HELP, /Examples:/); assert.match(HELP, /--compare file/); assert.match(HELP, /baseline\.json/); assert.match(HELP, /Outputs:/); assert.match(HELP, /Exit codes:/); assert.match(HELP, /no network/); });
 test('detects only non-empty evidence with relative slash paths', async () => {
   const root = await tempRepository();
   try {
@@ -200,7 +222,7 @@ test('findings expose actionable keys and report keeps renderer-compatible shape
     assert.ok(Array.isArray((parsed as { findings: unknown }).findings));
     assert.ok((parsed as { facts: { evidence: unknown } }).facts.evidence);
     assert.match(renderMarkdown(report), /## Evidence/);
-    assert.match(renderHtml(report), /<h2>Findings<\/h2>/);
+     assert.match(renderHtml(report), /<h2 id="findings-title">Findings<\/h2>/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('gitFacts reports fixed-date activity for temporary Git repositories', async (t) => {
