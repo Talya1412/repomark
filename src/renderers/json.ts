@@ -1,2 +1,2 @@
-import type { ScoreReport } from '../types.js';
-export function renderJson(report: ScoreReport): string { return `${JSON.stringify(report, null, 2)}\n`; }
+import type { JsonStatus, ScoreReport } from '../types.js';
+export function renderJson(report: ScoreReport, status?: JsonStatus): string { return `${JSON.stringify(status === undefined ? report : { ...report, status }, null, 2)}\n`; }

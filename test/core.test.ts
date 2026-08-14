@@ -21,6 +21,8 @@ import { scanRepository } from '../src/repository/scan-repository.js';
 import { renderJson } from '../src/renderers/json.js';
 import { renderBadge } from '../src/renderers/badge.js';
 import { compareReports } from '../src/comparison.js';
+import { isScoreReport } from '../src/report-contract.js';
+import { run } from '../src/main.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -50,7 +52,7 @@ test('classifies CLI usage errors separately from scan failures', async () => {
 test('creates parent directories for explicit output', async () => { const root = await mkdtemp(path.join(os.tmpdir(), 'repomark-')); const output = path.join(root, 'nested', 'report.txt'); try { await writeOutput(output, 'report'); assert.equal(await readFile(output, 'utf8'), 'report'); } finally { await rm(root, { recursive: true, force: true }); } });
 test('scores full repository deterministically', () => { const report = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z')); assert.equal(report.score, 100); assert.equal(report.grade, 'A'); assert.equal(report.generatedAt, '2026-01-01T00:00:00.000Z'); });
 test('grades boundaries', () => { assert.equal(gradeFor(90), 'A'); assert.equal(gradeFor(75), 'B'); assert.equal(gradeFor(60), 'C'); assert.equal(gradeFor(40), 'D'); assert.equal(gradeFor(39), 'F'); });
-test('compares score, evidence, findings, regressions, and recoveries deterministically', () => {
+test('compares score, evidence, findings, regressions, recoveries, and metadata deterministically', () => {
   const baseline = scoreRepository({ ...facts, features: { ...facts.features, tests: false }, evidence: findingEvidence }, new Date('2026-01-01T00:00:00.000Z'));
   const current = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z'));
   const comparison = compareReports(current, baseline);
@@ -59,7 +61,33 @@ test('compares score, evidence, findings, regressions, and recoveries determinis
   assert.deepEqual(comparison.regressions, []);
   assert.deepEqual(comparison.newFindings, []);
   assert.deepEqual(comparison.resolvedFindings, ['tests']);
-  assert.deepEqual(compareReports(current, current), { baselineScore: 100, scoreDelta: 0, baselineGrade: 'A', regressions: [], recoveries: [], changedEvidence: [], newFindings: [], resolvedFindings: [] });
+  assert.deepEqual(compareReports(current, current), { baselineScore: 100, scoreDelta: 0, baselineGrade: 'A', regressions: [], recoveries: [], changedEvidence: [], newFindings: [], resolvedFindings: [], metadata: { compatibility: 'compatible', diagnosticsChanged: false } });
+});
+test('reports versioned contract and JSON status without changing report root shape', () => {
+  const report = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z'));
+  assert.deepEqual(report.contract, { name: 'repomark', version: 1 });
+  const parsed: unknown = JSON.parse(renderJson(report, { passed: false, exitCode: 1, threshold: 101 }));
+  assert.equal((parsed as { status: { passed: boolean } }).status.passed, false);
+  assert.equal((parsed as { score: number }).score, 100);
+});
+test('accepts legacy reports but rejects malformed or unknown contracts', () => {
+  const report = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z'));
+  const { contract: _contract, ...legacy } = report;
+  assert.equal(isScoreReport(legacy), true);
+  assert.equal(isScoreReport({ ...report, contract: { name: 'repomark', version: 99 } }), false);
+  assert.equal(isScoreReport({ ...report, score: '100' }), false);
+});
+test('run accepts legacy baseline and rejects malformed baseline', async () => {
+  const root = await tempRepository();
+  try {
+    const baselineFile = path.join(root, 'baseline.json');
+    const report = scoreRepository(facts, new Date('2026-01-01T00:00:00.000Z'));
+    const { contract: _contract, ...legacy } = report;
+    await writeFile(baselineFile, JSON.stringify(legacy), 'utf8');
+    assert.equal(await run(['.', '--compare', baselineFile, '--format', 'json'], new Date('2026-01-01T00:00:00.000Z')), 0);
+    await writeFile(baselineFile, '{ malformed', 'utf8');
+    await assert.rejects(run(['.', '--compare', baselineFile], new Date('2026-01-01T00:00:00.000Z')), new RegExp(`invalid baseline report: ${baselineFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('badge color follows grade and escapes label values', () => { assert.match(renderBadge({ ...reportWithFinding, name: '<demo>' }), /#4c9aff/); assert.match(renderBadge({ ...reportWithFinding, name: '<demo>' }), /aria-label="repomark: 85\/100 B"/); });
 test('escapes output control characters', () => { assert.equal(escapeHtml('<x> & "'), '&lt;x&gt; &amp; &quot;'); assert.equal(escapeMarkdown('a|[b]'), 'a\\|\\[b\\]'); });
@@ -71,6 +99,20 @@ test('renders complete HTML comparison, diagnostics, and escaped evidence paths'
   const html = renderHtml({ ...report, comparison });
   assert.match(html, /Regressions/); assert.match(html, /Recoveries/); assert.match(html, /Changed evidence/); assert.match(html, /New findings/); assert.match(html, /Resolved findings/);
   assert.match(html, /Files scanned/); assert.match(html, /Unreadable directories/); assert.match(html, /Partial scan/); assert.match(html, /long\/&lt;path&gt;&amp;\.md/); assert.match(html, /<time datetime="2026-01-01T00:00:00\.000Z">/);
+});
+test('renders additive diagnostics and comparison metadata in terminal and Markdown', () => {
+  const comparison: Comparison = { baselineScore: 70, scoreDelta: 15, baselineGrade: 'C', regressions: [], recoveries: [], changedEvidence: [], newFindings: [], resolvedFindings: [], metadata: { baselineSource: 'baseline|<.json', compatibility: 'legacy', diagnosticsChanged: true } };
+  const report = scoreRepository({ ...facts, provenance: { scanner: 'local-filesystem', diagnostics: { filesScanned: 12, maxFiles: 10, maxDepth: 4, truncated: true, unreadableDirectories: 2, fileLimitReached: true, depthLimitReached: true, unreadableFiles: ['bad|<file>.md'] } } }, new Date('2026-01-01T00:00:00.000Z'));
+  const terminal = renderTerminal({ ...report, comparison }, false);
+  assert.match(terminal, /Limit causes: file limit, depth limit/); assert.match(terminal, /Unreadable files: 1 \(bad\|<file>\.md\)/); assert.match(terminal, /Compatibility: legacy/); assert.match(terminal, /Diagnostics changed: true/); assert.match(terminal, /Baseline source: baseline\|<\.json/);
+  const markdown = renderMarkdown({ ...report, comparison, status: { passed: false, exitCode: 1, threshold: 90 } });
+  assert.match(markdown, /## Report contract/); assert.match(markdown, /## JSON status/); assert.match(markdown, /file limit, depth limit/); assert.match(markdown, /bad\\\|<file>\.md/); assert.match(markdown, /baseline\\\|<\.json/); assert.match(markdown, /Compatibility: legacy/);
+});
+test('escapes additive HTML diagnostics and comparison metadata', () => {
+  const comparison: Comparison = { baselineScore: 70, scoreDelta: 15, baselineGrade: 'C', regressions: [], recoveries: [], changedEvidence: [], newFindings: [], resolvedFindings: [], metadata: { baselineSource: 'base"><script>.json', compatibility: 'compatible', diagnosticsChanged: true } };
+  const report = scoreRepository({ ...facts, provenance: { scanner: 'local-filesystem', diagnostics: { filesScanned: 1, maxFiles: 2, maxDepth: 3, truncated: true, unreadableDirectories: 0, fileLimitReached: false, depthLimitReached: true, unreadableFiles: ['<bad>&.md'] } } }, new Date('2026-01-01T00:00:00.000Z'));
+  const html = renderHtml({ ...report, comparison });
+  assert.match(html, /Limit causes<\/dt><dd>Depth limit/); assert.match(html, /&lt;bad&gt;&amp;\.md/); assert.match(html, /base&quot;&gt;&lt;script&gt;\.json/); assert.match(html, /Diagnostics changed <strong>true/); assert.doesNotMatch(html, /<script>/);
 });
 test('help documents usage, compare, outputs, local-only note, and exit codes', () => { assert.match(HELP, /Examples:/); assert.match(HELP, /--compare file/); assert.match(HELP, /baseline\.json/); assert.match(HELP, /Outputs:/); assert.match(HELP, /Exit codes:/); assert.match(HELP, /no network/); });
 test('detects only non-empty evidence with relative slash paths', async () => {
@@ -101,6 +143,18 @@ test('detects only non-empty evidence with relative slash paths', async () => {
       assert.ok(!path.isAbsolute(evidencePath));
       assert.doesNotMatch(evidencePath, /\\/);
     }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+test('scanner exposes deterministic limit and unreadable-file causes additively', async () => {
+  const root = await tempRepository();
+  try {
+    const scanned = await scanRepository(root, new Date('2026-01-01T00:00:00.000Z'));
+    const diagnostics = scanned.provenance?.diagnostics;
+    assert.equal(diagnostics?.maxFiles, 500);
+    assert.equal(diagnostics?.maxDepth, 3);
+    assert.equal(diagnostics?.fileLimitReached, false);
+    assert.equal(diagnostics?.depthLimitReached, false);
+    assert.deepEqual(diagnostics?.unreadableFiles, []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('requires non-whitespace content and recognizes supported CI providers', async () => {
