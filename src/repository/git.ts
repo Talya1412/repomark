@@ -1,0 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileAsync = promisify(execFile);
+export async function git(root: string, args: readonly string[]): Promise<string | null> { try { const result = await execFileAsync('git', [...args], { cwd: root, maxBuffer: 1024 * 1024 }); return result.stdout.trim(); } catch { return null; } }
+export async function gitFacts(root: string, referenceDate = new Date()): Promise<Readonly<{ isGit: boolean; activityDays: number | null; branch: string | null }>> { const inside = await git(root, ['rev-parse', '--is-inside-work-tree']); if (inside !== 'true') return { isGit: false, activityDays: null, branch: null }; const branch = await git(root, ['branch', '--show-current']); const timestamp = await git(root, ['log', '-1', '--format=%ct']); const seconds = timestamp === null ? NaN : Number(timestamp); const activityDays = Number.isFinite(seconds) ? Math.max(0, Math.floor((referenceDate.getTime() - seconds * 1000) / 86400000)) : null; return { isGit: true, activityDays, branch: branch || null }; }
