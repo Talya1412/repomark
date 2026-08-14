@@ -1,0 +1,4 @@
+import type { Rule } from './score-types.js';
+export const SCORE_RULES: readonly Rule[] = [
+  { key: 'readme', label: 'README', points: 15, evaluate: (facts) => facts.features.readme }, { key: 'license', label: 'License', points: 10, evaluate: (facts) => facts.features.license }, { key: 'gitignore', label: '.gitignore', points: 5, evaluate: (facts) => facts.features.gitignore }, { key: 'ci', label: 'CI', points: 15, evaluate: (facts) => facts.features.ci }, { key: 'tests', label: 'Tests', points: 15, evaluate: (facts) => facts.features.tests }, { key: 'metadata', label: 'Package metadata', points: 10, evaluate: (facts) => facts.features.metadata }, { key: 'source', label: 'Source', points: 10, evaluate: (facts) => facts.features.source }, { key: 'docs', label: 'Docs', points: 10, evaluate: (facts) => facts.features.docs }, { key: 'activity', label: 'Recent activity', points: 10, evaluate: (facts) => facts.features.activity }
+];
