@@ -14,7 +14,20 @@ export function renderTerminal(report: ScoreReport, color: boolean): string {
   for (const finding of report.findings) {
     lines.push(`  [${paint(finding.severity.toUpperCase(), finding.severity === 'high' ? '31' : finding.severity === 'medium' ? '33' : '36')}] ${finding.message}`, `    Action: ${finding.action}`);
   }
-  if (report.facts.provenance) lines.push('', 'Diagnostics', `  Files scanned: ${report.facts.provenance.diagnostics.filesScanned}`, `  Traversal: max ${report.facts.provenance.diagnostics.maxFiles} files, depth ${report.facts.provenance.diagnostics.maxDepth}${report.facts.provenance.diagnostics.truncated ? ' (limit reached)' : ''}`);
-  if (report.comparison) lines.push('', 'Comparison', `  Score delta: ${report.comparison.scoreDelta >= 0 ? '+' : ''}${report.comparison.scoreDelta}`, `  Regressions: ${report.comparison.regressions.length}`, `  Recoveries: ${report.comparison.recoveries.length}`);
+  if (report.facts.provenance) {
+    const diagnostics = report.facts.provenance.diagnostics;
+    lines.push('', 'Diagnostics', `  Files scanned: ${diagnostics.filesScanned}`, `  Traversal: max ${diagnostics.maxFiles} files, depth ${diagnostics.maxDepth}${diagnostics.truncated ? ' (limit reached)' : ''}`);
+    if (diagnostics.fileLimitReached || diagnostics.depthLimitReached) lines.push(`  Limit causes: ${[diagnostics.fileLimitReached ? 'file limit' : '', diagnostics.depthLimitReached ? 'depth limit' : ''].filter(Boolean).join(', ')}`);
+    const unreadableFiles = diagnostics.unreadableFiles ?? [];
+    lines.push(`  Unreadable files: ${unreadableFiles.length}${unreadableFiles.length > 0 ? ` (${unreadableFiles.join(', ')})` : ''}`);
+  }
+  if (report.comparison) {
+    const metadata = report.comparison.metadata;
+    lines.push('', 'Comparison', `  Score delta: ${report.comparison.scoreDelta >= 0 ? '+' : ''}${report.comparison.scoreDelta}`, `  Regressions: ${report.comparison.regressions.length}`, `  Recoveries: ${report.comparison.recoveries.length}`);
+    if (metadata) {
+      lines.push(`  Compatibility: ${metadata.compatibility}`, `  Diagnostics changed: ${metadata.diagnosticsChanged}`);
+      if (metadata.baselineSource !== undefined) lines.push(`  Baseline source: ${metadata.baselineSource}`);
+    }
+  }
   return `${lines.join('\n')}\n`;
 }
