@@ -11,25 +11,29 @@ type Entry = { relative: string; absolute: string; isDirectory: boolean; size: n
 async function entries(root: string): Promise<{ files: Entry[]; diagnostics: ScanDiagnostics }> {
   const result: Entry[] = [];
   let depthLimited = false;
+  let fileLimitReached = false;
   let unreadableDirectories = 0;
+  const unreadableFiles: string[] = [];
   const visit = async (directory: string, relativeDirectory: string, depth: number): Promise<void> => {
     if (depth > MAX_DEPTH) { depthLimited = true; return; }
-    if (result.length >= MAX_FILES) return;
+    if (result.length >= MAX_FILES) { fileLimitReached = true; return; }
     let children;
     try { children = await readdir(directory, { withFileTypes: true }); } catch (error: unknown) { if (depth === 0) throw error; unreadableDirectories += 1; return; }
     for (const child of children.sort((left, right) => left.name.localeCompare(right.name))) {
-      if (result.length >= MAX_FILES) break;
+      if (result.length >= MAX_FILES) { fileLimitReached = true; break; }
       if (child.name === '.git' || child.name === 'node_modules' || child.name === 'dist' || child.name === 'coverage') continue;
       const relative = relativeDirectory ? path.posix.join(relativeDirectory, child.name) : child.name;
       const absolute = resolveChild(directory, child.name);
       if (child.isDirectory()) { await visit(absolute, relative, depth + 1); continue; }
       if (!child.isFile()) continue;
-      const content = await readText(absolute);
+      let content: string | null;
+      try { content = await readText(absolute); } catch { unreadableFiles.push(relative); continue; }
       result.push({ relative, absolute, isDirectory: false, size: content?.length ?? 0, hasContent: content !== null && content.trim().length > 0 });
     }
   };
   await visit(root, '', 0);
-  return { files: result, diagnostics: { filesScanned: result.length, maxFiles: MAX_FILES, maxDepth: MAX_DEPTH, truncated: depthLimited || result.length >= MAX_FILES, unreadableDirectories } };
+  unreadableFiles.sort();
+  return { files: result, diagnostics: { filesScanned: result.length, maxFiles: MAX_FILES, maxDepth: MAX_DEPTH, truncated: depthLimited || fileLimitReached, unreadableDirectories, fileLimitReached, depthLimitReached: depthLimited, unreadableFiles } };
 }
 
 const nonEmpty = (file: Entry): boolean => file.hasContent;
