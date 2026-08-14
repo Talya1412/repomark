@@ -1,0 +1,12 @@
+export type Format = 'terminal' | 'json' | 'html' | 'markdown' | 'badge';
+export type Grade = 'A' | 'B' | 'C' | 'D' | 'F';
+export type FeatureKey = 'readme' | 'license' | 'gitignore' | 'ci' | 'tests' | 'metadata' | 'source' | 'docs' | 'activity';
+export type FeatureMap = Readonly<Record<FeatureKey, boolean>>;
+export type FeatureEvidence = readonly string[];
+export type EvidenceMap = Readonly<Record<FeatureKey, FeatureEvidence>>;
+export type PackageMetadata = Readonly<{ valid: boolean; name: string | null; license: string | null; reference: string | null; error: string | null }>;
+export type RepositoryFacts = Readonly<{ path: string; name: string; isGit: boolean; features: FeatureMap; evidence?: EvidenceMap; activityDays: number | null; gitBranch: string | null; packageName: string | null; packageMetadata?: PackageMetadata }>;
+export type ScoreItem = Readonly<{ key: FeatureKey; label: string; points: number; earned: number; present: boolean }>;
+export type FindingSeverity = 'low' | 'medium' | 'high';
+export type Finding = Readonly<{ key: FeatureKey; severity: FindingSeverity; message: string; action: string }>;
+export type ScoreReport = Readonly<{ path: string; name: string; score: number; grade: Grade; items: readonly ScoreItem[]; findings: readonly Finding[]; facts: RepositoryFacts; generatedAt: string }>;
