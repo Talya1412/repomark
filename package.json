@@ -1,0 +1,11 @@
+{
+  "name": "repomark",
+  "version": "0.1.0",
+  "description": "Deterministic local repository health reports.",
+  "type": "module",
+  "bin": { "repomark": "dist/src/cli.js" },
+  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md"],
+  "engines": { "node": ">=20" },
+  "scripts": { "build": "tsc", "test": "npm run build && node --test dist/test/core.test.js", "check": "tsc --noEmit", "smoke": "npm run build && node dist/src/cli.js --help && node dist/src/cli.js --format terminal --no-color ." },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.7.0" }
+}
