@@ -1,0 +1,3 @@
+import { escapeXml } from './escape.js';
+import type { ScoreReport } from '../types.js';
+export function renderBadge(report: ScoreReport): string { const label = 'repomark'; const value = `${report.score}/100 ${report.grade}`; const width = 190; return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="20" role="img" aria-label="${escapeXml(label)}: ${escapeXml(value)}"><rect width="${width}" height="20" fill="#555"/><rect x="70" width="${width - 70}" height="20" fill="#2ea44f"/><g fill="#fff" font-family="Verdana,sans-serif" font-size="11"><text x="35" y="14" text-anchor="middle">${escapeXml(label)}</text><text x="130" y="14" text-anchor="middle">${escapeXml(value)}</text></g></svg>\n`; }
