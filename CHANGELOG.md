@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Exposed scanner diagnostics, report contract/status, and comparison compatibility metadata across terminal, Markdown, HTML, and JSON outputs without changing scoring, badges, or exit semantics.
 - Reworked the public package, README, demo, and scheduled report workflow around offline, evidence-first repository readiness and regression checks.
 - Added complete npm metadata, package smoke validation, Markdown job summaries, and JSON/HTML workflow artifacts.
 - Tightened README, license, CI, test, source, docs, and package metadata detection to avoid false-positive scores.
