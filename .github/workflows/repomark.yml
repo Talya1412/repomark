@@ -13,4 +13,29 @@ jobs:
         with: { node-version: 20 }
       - run: npm ci
       - run: npm run build
-      - run: node dist/src/cli.js . --format terminal --no-color
+      - name: Generate reports
+        id: repomark
+        shell: bash
+        run: |
+          set +e
+          node dist/src/cli.js . --format markdown --output repomark.md
+          markdown_status=$?
+          node dist/src/cli.js . --format json --output repomark.json
+          json_status=$?
+          node dist/src/cli.js . --format html --output repomark.html
+          html_status=$?
+          cat repomark.md >> "$GITHUB_STEP_SUMMARY"
+          if [ "$markdown_status" -ne 0 ] || [ "$json_status" -ne 0 ] || [ "$html_status" -ne 0 ]; then
+            echo "repomark report generation failed" >&2
+            exit 1
+          fi
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repomark-reports
+          path: |
+            repomark.md
+            repomark.json
+            repomark.html
+          if-no-files-found: warn

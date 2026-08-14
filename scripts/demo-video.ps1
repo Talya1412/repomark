@@ -28,8 +28,18 @@ function ConvertTo-FilterPath([string]$Path) {
   return ($Path.Replace('\', '/').Replace(':', '\:').Replace("'", "\\'"))
 }
 
+function Resolve-RepomarkCommand {
+  $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+  $cli = Join-Path $root 'dist\src\cli.js'
+  if (-not (Test-Path -LiteralPath $cli)) {
+    throw 'dist/src/cli.js was not found. Run npm run build, then rerun scripts/demo-video.ps1.'
+  }
+  return @{ Root = $root; Cli = $cli }
+}
+
 $ffmpeg = Resolve-FfmpegCommand
 $font = ConvertTo-FilterPath (Resolve-FontPath)
+$repomark = Resolve-RepomarkCommand
 $outputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $mp4 = Join-Path $outputDirectory 'repomark-demo.mp4'
 $gif = Join-Path $outputDirectory 'repomark-demo.gif'
@@ -39,18 +49,22 @@ New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 New-Item -ItemType Directory -Force -Path $tempDirectory | Out-Null
 
 try {
-  $lines = @(
-    @{ Name = 'command'; Text = 'PS> repomark .'; Start = 0.8; End = 2.3; Size = 30; Color = 'white'; Y = 130 },
-    @{ Name = 'scan'; Text = 'Scanning local files and Git metadata...'; Start = 1.6; End = 3.0; Size = 24; Color = '0x9aa7bd'; Y = 190 },
-    @{ Name = 'score'; Text = 'Score: 90/100   Grade: A'; Start = 2.7; End = 10.0; Size = 43; Color = '0x72f1b8'; Y = 270 },
-    @{ Name = 'pass'; Text = 'PASS  README 15/15    License 10/10    CI 15/15'; Start = 3.6; End = 10.0; Size = 23; Color = 'white'; Y = 350 },
-    @{ Name = 'evidence'; Text = 'Evidence: README.md, LICENSE, .gitignore, test/core.test.ts'; Start = 4.35; End = 10.0; Size = 21; Color = '0x9aa7bd'; Y = 395 },
-    @{ Name = 'source'; Text = 'Source: src/args.ts, src/main.ts, src/scoring/...'; Start = 5.0; End = 10.0; Size = 21; Color = '0x9aa7bd'; Y = 435 },
-    @{ Name = 'formats'; Text = 'Formats: terminal | json | html | markdown | badge'; Start = 5.65; End = 10.0; Size = 21; Color = '0x72d6ff'; Y = 475 },
-    @{ Name = 'finding'; Text = '[LOW] Recent Git activity is missing or stale.'; Start = 6.55; End = 10.0; Size = 24; Color = '0xffc857'; Y = 525 },
-    @{ Name = 'action'; Text = 'Action: Make a recent commit in this repository.'; Start = 7.1; End = 10.0; Size = 21; Color = '0xffdca8'; Y = 565 },
-    @{ Name = 'cta'; Text = 'Local. Deterministic. Evidence-first.'; Start = 8.3; End = 10.0; Size = 27; Color = '0x72d6ff'; Y = 645 }
+  Push-Location $repomark.Root
+  $terminalOutput = (& node $repomark.Cli . --format terminal --no-color | Out-String).TrimEnd()
+  if ($LASTEXITCODE -ne 0) { throw "repomark demo command failed with exit code $LASTEXITCODE." }
+  $terminalLines = @($terminalOutput -split "`r?`n" | Where-Object { $_.Trim().Length -gt 0 })
+  $displayLines = @(
+    @{ Name = 'command'; Text = 'PS> repomark . --format terminal --no-color'; Start = 0.8; End = 2.3; Size = 30; Color = 'white'; Y = 130 }
   )
+  $lineY = 190
+  foreach ($terminalLine in $terminalLines) {
+    if ($lineY -gt 590) { break }
+    $displayLines += @{ Name = ('output-' + $displayLines.Count); Text = $terminalLine; Start = 1.6; End = 10.0; Size = 21; Color = '0x9aa7bd'; Y = $lineY }
+    $lineY += 34
+  }
+  $displayLines += @{ Name = 'cta'; Text = 'Local. Deterministic. Evidence-first.'; Start = 8.3; End = 10.0; Size = 27; Color = '0x72d6ff'; Y = 645 }
+
+  $lines = $displayLines
 
   $filters = @(
     'drawbox=x=58:y=55:w=1164:h=610:color=0x17233b@1:t=2',
@@ -85,6 +99,7 @@ try {
   Write-Host "Created $gif"
 }
 finally {
+  if ((Get-Location).Path -eq $repomark.Root) { Pop-Location }
   if (Test-Path -LiteralPath $tempDirectory) {
     Remove-Item -LiteralPath $tempDirectory -Recurse -Force
   }
