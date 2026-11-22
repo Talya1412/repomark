@@ -36,11 +36,19 @@ async function writeRepositoryFile(root: string, relative: string, content: stri
   await writeFile(file, content, 'utf8');
 }
 test('parses format and threshold', () => { const options = parseArgs(['demo', '--format', 'json', '--threshold', '75', '--no-color']); assert.equal(options.path, 'demo'); assert.equal(options.format, 'json'); assert.equal(options.threshold, 75); assert.equal(options.color, false); });
+test('counts an explicit dot as the repository path', () => {
+  assert.equal(parseArgs(['.']).path, '.');
+  assert.throws(() => parseArgs(['.', 'another-repo']), /only one repository path/);
+});
 test('parses optional baseline comparison path', () => { assert.equal(parseArgs(['--compare', 'baseline.json']).compare, 'baseline.json'); assert.throws(() => parseArgs(['--compare']), /requires a value/); });
 test('rejects invalid threshold', () => { assert.throws(() => parseArgs(['--threshold', '101']), /threshold/); });
 test('rejects invalid or missing format', () => { assert.throws(() => parseArgs(['--format', 'yaml']), /format/); assert.throws(() => parseArgs(['--format']), /requires a value/); assert.throws(() => parseArgs(['--format', '--output', 'report.txt']), /requires a value/); });
 test('rejects missing output values', () => { assert.throws(() => parseArgs(['--output']), /--output requires a value/); assert.throws(() => parseArgs(['--output', '--badge-output', 'badge.svg']), /--output requires a value/); assert.throws(() => parseArgs(['--badge-output']), /--badge-output requires a value/); });
 test('rejects missing threshold values', () => { assert.throws(() => parseArgs(['--threshold']), /--threshold requires a value/); assert.throws(() => parseArgs(['--threshold', '--format', 'json']), /--threshold requires a value/); });
+test('rejects a blank threshold without changing explicit zero', () => {
+  for (const value of ['', '  ']) assert.throws(() => parseArgs(['--threshold', value]), /threshold/);
+  assert.equal(parseArgs(['--threshold', '0']).threshold, 0);
+});
 test('classifies CLI usage errors separately from scan failures', async () => {
   await assert.rejects(execFileAsync(process.execPath, ['dist/src/cli.js', '--format', 'yaml']), (error: unknown) => error !== null && typeof error === 'object' && 'code' in error && error.code === 2);
   await assert.rejects(execFileAsync(process.execPath, ['dist/src/cli.js', '--threshold', '101']), (error: unknown) => error !== null && typeof error === 'object' && 'code' in error && error.code === 2);
